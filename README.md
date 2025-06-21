@@ -10,3 +10,5 @@
 - `polynomial_models.py` : Ce fichier permet de visualiser le comportement d'un modèle d'apprentissage en fonction du nombre de paramètres pour comprendre le phénomène de sur-apprentissage et sous-apprentissage. L'exemple utilisé est un ensemble de polynômes de diffèrents degrés approximant un nuage de points.
 
 - `piecewise_linear_approximation_via_relu_network.py` : Ce fichier permet de choisir une fonction continue affine par morceau, puis d'entrainer un réseau pour approximer cette fonction. Il est ensuite possible de calculer les changements de pattern d'activation.
+
+- `network_trained_with_polynomial_target.py` : (Inutilisé durant le stage) Ce fichier permet de visualiser la prédiction d'un réseau ReLU entraîné sur une fonction cible polynômiale en fonction du nombre d'epochs.
