@@ -1,11 +1,8 @@
 # Neural-Networks
 
-# 🔬 Visualisation Interactive d’un Réseau de Neurones à une Couche
-
-Ce projet permet de visualiser en 2D et 3D le comportement d’un réseau de neurones simple à une couche cachée avec fonction d’activation ReLU. L’utilisateur peut interagir dynamiquement avec les **poids** et **biais** via des **sliders** afin d’observer l’effet sur la frontière de décision et la surface de sortie.
-
----
-
+## Contexte :
+  Ce projet a été implémenté dans le cadre de mon stage de première année du diplôme du Magistère de Mathématiques de l'ENS Rennes. Ce stage portait sur les réseaux de neurones, les phénomènes de sur-apprentissage, sous-apprentissage, régularisation implicite, géométrie des réseaux... L'objectif de ces fichiers est de visualiser ces phénomènes via des exemples très simples.
+  
 ## 📁 Contenu du projet
 
 - `one_layer_relu_network.py` : Ce fichier permet de visualiser en 2D et 3D le comportement d’un réseau de neurones simple à une couche cachée avec fonction d’activation ReLU. L’utilisateur peut interagir dynamiquement avec les **poids** et **biais** via des **sliders** afin d’observer l’effet sur la frontière de décision et la surface de sortie.
