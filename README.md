@@ -12,3 +12,7 @@
 - `piecewise_linear_approximation_via_relu_network.py` : Ce fichier permet de choisir une fonction continue affine par morceau, puis d'entrainer un réseau pour approximer cette fonction. Il est ensuite possible de calculer les changements de pattern d'activation.
 
 - `network_trained_with_polynomial_target.py` : (Inutilisé durant le stage) Ce fichier permet de visualiser la prédiction d'un réseau ReLU entraîné sur une fonction cible polynômiale en fonction du nombre d'epochs.
+
+- `parameter_space` : Ce fichier permet de visualiser l'espace des paramètres pour un réseau d'architecture $(1, 1, 1)$. Il permet en particulier de visualiser l'influence de l'initialisation sur l'apprentissage.
+
+![GIF](parameter_space.gif)
