@@ -1,7 +1,7 @@
-# Neural-Networks
+# Réseaux de neurones
 
 ## Contexte :
-  Ce projet a été implémenté dans le cadre de mon stage de première année du diplôme du Magistère de Mathématiques de l'ENS Rennes sous la supervision de François Malgouyres de l'Institut de Mathématiques de Toulouse. Ce stage portait sur les réseaux de neurones, les phénomènes de sur-apprentissage, sous-apprentissage, régularisation implicite, géométrie des réseaux... L'objectif de ces fichiers est de visualiser certains de ces phénomènes via des exemples très simples.
+  Ce projet a été implémenté dans le cadre de mon stage de première année du diplôme du Magistère de Mathématiques de l'ENS Rennes sous la supervision de François Malgouyres de l'Institut de Mathématiques de Toulouse. Ce stage portait sur les réseaux de neurones, les phénomènes de sur-apprentissage, sous-apprentissage, régularisation implicite, géométrie des réseaux de neurones... L'objectif de ces fichiers est de visualiser certains de ces phénomènes via des exemples très simples.
   
 ## 📁 Contenu du projet
 
