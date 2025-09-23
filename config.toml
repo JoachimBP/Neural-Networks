@@ -1,0 +1,35 @@
+# Configuration file for the neural network training experiment
+
+[target_function]
+# Define the breakpoints of the piecewise-affine target function.
+# 'x_coords' and 'y_coords' must have the same number of elements.
+x_coords = [4, 6, 16]
+y_coords = [10, 12, 2]
+
+[dataset]
+# Parameters for generating the training dataset.
+num_samples = 10       # Number of data points to generate.
+noise_std_dev = 0     # Standard deviation of the Gaussian noise added to the y-values.
+
+[network]
+# Neural network architecture and training parameters.
+# The first element must be 1 (input dimension) and the last must be 1 (output dimension).
+layers = [1, 30, 30, 1]
+epochs = 30            # Number of training epochs.
+learning_rate = 0.01    # Learning rate for the Adam optimizer.
+
+[plot]
+# Settings for the output plot.
+x_min = 0
+x_max = 20
+y_min = 0
+y_max = 20
+
+# Whether to display certain elements on the final plot.
+show_sample_points = true
+show_activation_changes = true
+
+[output]
+# The name of the saved image file.
+save_experiment = true
+output_filename = "training_results.png"
