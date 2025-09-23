@@ -1,29 +1,31 @@
 # ========================================================================================== #
 #                                                                                            #
-#                             <<< Neural Network Training >>>                                #
-#                               (Configuration-based)                                        #
+#                           <<< Neural Network Batch Training >>>                            #
+#                                 (Configuration-based)                                      #
 #                                                                                            #
 # ========================================================================================== #
 #                                                                                            #
-#  This script trains a ReLU neural network to approximate a piecewise-affine function.      #
-#  All parameters are loaded from a 'config.toml' file, removing the need for a GUI.         #
+#  This script trains a ReLU neural network multiple times on a single dataset.              #
+#  All parameters are loaded from 'config.toml'. It saves final losses and activation        #
+#  region counts without generating any plots.                                               #
 #                                                                                            #
 # ========================================================================================== #
 
 
 #_____________________________________________________________________________________________/ Imports
 
-import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
 import tensorflow as tf
 from keras import Sequential, Input
 from keras.layers import Dense
 from keras.optimizers import Adam
-import toml  # Library to parse .toml files
+import toml
 import os
+import shutil
+from datetime import datetime
 
-#_____________________________________________________________________________________________/ Neural Network Class (largely unchanged)
+#_____________________________________________________________________________________________/ Neural Network Class
 
 class ReLU_network:
     """
@@ -31,54 +33,53 @@ class ReLU_network:
     """
     def __init__(self, layers, learning_rate=0.01):
         """Initializes a neural network with a given architecture and learning rate."""
-        self.input_size = layers[0]
-        self.output_size = layers[-1]
-        self.size = len(layers)
-
         self.nnet = Sequential()
-        self.nnet.add(Input(shape=(self.input_size,)))
+        self.nnet.add(Input(shape=(layers[0],)))
         for size in layers[1:-1]:
             self.nnet.add(Dense(size, activation='relu'))
-        self.nnet.add(Dense(self.output_size, activation='linear'))
+        self.nnet.add(Dense(layers[-1], activation='linear'))
         
         optimizer = Adam(learning_rate=learning_rate)
-        self.nnet.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
+        self.nnet.compile(optimizer=optimizer, loss='mse')
 
-    def train(self, X_train, Y_train, X_test, Y_test, epochs):
+    def train(self, X_train, Y_train, X_val, Y_val, epochs):
         """Trains the neural network."""
-        return self.nnet.fit(X_train, Y_train, epochs=epochs, batch_size=32, validation_data=(X_test, Y_test), verbose=0)
+        return self.nnet.fit(X_train, Y_train, epochs=epochs, batch_size=32, validation_data=(X_val, Y_val), verbose=0)
 
-    def evaluate(self, X):
-        """Predicts outputs for given inputs."""
-        return self.nnet.predict(X, verbose=0)
-
-    def get_activation_change_points(self, x):
-        """Finds the x-values where the activation pattern of ReLU neurons changes."""
-        current_output = tf.convert_to_tensor(x, dtype=tf.float32)
+    def get_activation_region_count(self, x_space):
+        """Finds the number of distinct linear regions over the input space."""
+        x_tensor = tf.convert_to_tensor(x_space, dtype=tf.float32)
+        
         binary_activations = []
+        current_output = x_tensor
         for layer in self.nnet.layers:
             current_output = layer(current_output)
             if hasattr(layer, 'activation') and layer.activation.__name__ == 'relu':
                 binary_activations.append(tf.cast(current_output > 0, tf.int8))
         
         if not binary_activations:
-            return np.array([])
+            return 1 # A network with no ReLUs has only one affine region
             
+        # Create a unique "signature" for each input point based on its activation pattern
         signatures = tf.concat([tf.reshape(act, (act.shape[0], -1)) for act in binary_activations], axis=1).numpy()
+        
+        # Count the number of changes in activation patterns
         change_indices = np.any(np.diff(signatures, axis=0), axis=1)
-        return x[1:][change_indices].flatten()
+        
+        # Number of regions = number of changes + 1
+        return np.sum(change_indices) + 1
 
 #_____________________________________________________________________________________________/ Main Experiment Logic
 
 def run_experiment(config):
     """
-    Loads data, trains the network, and generates plots based on the provided configuration.
+    Loads data, runs multiple training loops, and saves the results.
     """
     # --- 1. Load Parameters from Config ---
+    exp_cfg = config['experiment']
     target_func_cfg = config['target_function']
     dataset_cfg = config['dataset']
     network_cfg = config['network']
-    plot_cfg = config['plot']
     output_cfg = config['output']
     print("✓ Configuration loaded.")
 
@@ -89,118 +90,100 @@ def run_experiment(config):
     if len(breakpoints_x) < 2:
         raise ValueError("Target function requires at least 2 breakpoints.")
     
-    # Sort points by x-coordinate to ensure correct interpolation
     sort_indices = np.argsort(breakpoints_x)
-    breakpoints_x = breakpoints_x[sort_indices]
-    breakpoints_y = breakpoints_y[sort_indices]
-    
-    interpolated_function = interp1d(breakpoints_x, breakpoints_y, kind='linear', fill_value="extrapolate")
+    interpolated_function = interp1d(
+        breakpoints_x[sort_indices], 
+        breakpoints_y[sort_indices], 
+        kind='linear', 
+        fill_value="extrapolate"
+    )
     print("✓ Target function created.")
 
-    # --- 3. Generate Dataset ---
-    x_data = np.random.uniform(plot_cfg['x_min'], plot_cfg['x_max'], size=dataset_cfg['num_samples'])
+    # --- 3. Generate a Single, Shared Dataset ---
+    x_data = np.random.uniform(target_func_cfg['x_min'], target_func_cfg['x_max'], size=dataset_cfg['num_samples'])
     y_data = interpolated_function(x_data) + np.random.normal(0, dataset_cfg['noise_std_dev'], size=dataset_cfg['num_samples'])
     
     x_train = x_data.reshape(-1, 1)
     y_train = y_data.reshape(-1, 1)
-    print(f"✓ Dataset generated with {dataset_cfg['num_samples']} samples.")
-
-    # --- 4. Initialize and Train the Neural Network ---
-    nnet = ReLU_network(layers=network_cfg['layers'], learning_rate=network_cfg['learning_rate'])
     
     # Use a dense grid as a consistent validation set
-    x_val = np.linspace(plot_cfg['x_min'], plot_cfg['x_max'], 100).reshape(-1, 1)
+    x_val = np.linspace(target_func_cfg['x_min'], target_func_cfg['x_max'], 100).reshape(-1, 1)
     y_val = interpolated_function(x_val).reshape(-1, 1)
     
-    print(f"▶ Training network for {network_cfg['epochs']} epochs...")
-    history = nnet.train(x_train, y_train, x_val, y_val, epochs=network_cfg['epochs'])
-    print("✓ Training complete.")
+    print(f"✓ Dataset generated with {dataset_cfg['num_samples']} samples.")
 
-    # --- 5. Generate Predictions and Activation data ---
-    subdivision_size = 1000
-    x_pred_space = np.linspace(plot_cfg['x_min'], plot_cfg['x_max'], subdivision_size).reshape(-1, 1)
-    y_pred = nnet.evaluate(x_pred_space)
+    # --- 4. Run Multiple Training Sessions ---
+    final_losses = []
+    num_activation_regions = []
+    num_seen_activation_regions = []
+    num_runs = exp_cfg['num_runs']
     
-    activation_change_points = []
-    if plot_cfg['show_activation_changes']:
-        activation_change_points = nnet.get_activation_change_points(x_pred_space)
-        print(f"Found {len(activation_change_points)} activation changes.")
+    # A high-resolution space to check for activation changes
+    x_pred_space = np.linspace(target_func_cfg['x_min'], target_func_cfg['x_max'], 1000).reshape(-1, 1)
 
+    for i in range(num_runs):
+        print(f"\n--- Running training {i + 1}/{num_runs} ---")
+        
+        # Initialize a new network for each run to get new random weights
+        nnet = ReLU_network(layers=network_cfg['layers'], learning_rate=network_cfg['learning_rate'])
+        
+        history = nnet.train(x_train, y_train, x_val, y_val, epochs=network_cfg['epochs'])
+        
+        # Record final validation loss
+        final_loss = history.history['val_loss'][-1]
+        final_losses.append(final_loss)
+        print(f"  Final Validation Loss: {final_loss:.6f}")
+        
+        # Record number of activation regions
+        regions = nnet.get_activation_region_count(x_pred_space)
+        num_activation_regions.append(regions)
+        print(f"  Activation Regions: {regions}")
 
-    # --- 6. Plotting Results ---
-    fig, (input_ax, loss_ax) = plt.subplots(1, 2, figsize=(12, 6))
-    fig.suptitle('Neural Network Training Results', fontsize=16)
+        sorted_indices = np.argsort(x_train.flatten())
+        sorted_x_train = x_train[sorted_indices]
+        seen_regions = nnet.get_activation_region_count(sorted_x_train)
+        num_seen_activation_regions.append(seen_regions)
+        print(f"  Seen Activation Regions: {seen_regions}")
 
-    # Plot 1: Function Approximation
-    input_ax.set_title('Function Approximation')
-    input_ax.set_xlim(plot_cfg['x_min'], plot_cfg['x_max'])
-    input_ax.set_ylim(plot_cfg['y_min'], plot_cfg['y_max'])
-    
-    # Plot target function
-    input_ax.plot(x_pred_space, interpolated_function(x_pred_space), 'b-', label='Target Function')
-    input_ax.scatter(breakpoints_x, breakpoints_y, color='blue', zorder=5)
-    
-    # Plot network prediction
-    input_ax.plot(x_pred_space, y_pred, 'g-', label='NN Prediction')
-    
-    # Plot training samples if enabled
-    if plot_cfg['show_sample_points']:
-        input_ax.scatter(x_train, y_train, color='orange', alpha=0.6, label='Training Samples')
+    print("\n✓ All training runs complete.")
 
-    # Plot activation changes if enabled
-    if plot_cfg['show_activation_changes']:
-        for x_val in activation_change_points:
-            input_ax.axvline(x=x_val, color='black', linestyle='dotted', linewidth=1)
-        # Custom legend entry for dotted line
-        from matplotlib.lines import Line2D
-        activation_legend_line = Line2D([0], [0], color='black', linestyle='dotted', label=f'Activation Changes ({len(activation_change_points)})')
-        handles, labels = input_ax.get_legend_handles_labels()
-        handles.append(activation_legend_line)
-        input_ax.legend(handles=handles)
-    else:
-        input_ax.legend()
-
-    input_ax.set_xlabel('Input (x)')
-    input_ax.set_ylabel('Output (y)')
-    input_ax.grid(True, linestyle='--', alpha=0.6)
-
-    # Plot 2: Loss Curves
-    loss_ax.set_title('Training & Validation Loss')
-    loss_ax.plot(history.history['loss'], label='Training Loss (MSE)')
-    loss_ax.plot(history.history['val_loss'], label='Validation Loss (MSE)')
-    loss_ax.set_xlabel('Epochs')
-    loss_ax.set_ylabel('Mean Squared Error')
-    loss_ax.legend()
-    loss_ax.grid(True, linestyle='--', alpha=0.6)
-
-    # --- 7. Save and Finalize ---
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    output_path = output_cfg['output_filename']
-    if 'output' in config and config['output'].get('save_experiment', False):
-        os.makedirs('results', exist_ok=True)
-        output_path = os.path.join('results', output_path)
-        plt.savefig(output_path)
-        print(f"✓ Plot saved to '{output_path}'.")
-    plt.show()
-    
-
+    # --- 5. Save Results ---
+    if output_cfg.get('save_experiment', False):
+        now = datetime.now()
+        date_time_str = now.strftime("%Y-%m-%d_%H-%M-%S")
+        output_path = os.path.join(output_cfg['results_base_dir'], date_time_str)
+        
+        os.makedirs(output_path, exist_ok=True)
+        
+        # Save a copy of the config file for reproducibility
+        shutil.copy('config.toml', os.path.join(output_path, 'config.toml'))
+        
+        # Save the results arrays to a compressed NumPy file
+        results_file_path = os.path.join(output_path, 'results.npz')
+        np.savez_compressed(
+            results_file_path,
+            final_losses=np.array(final_losses),
+            activation_regions=np.array(num_activation_regions),
+            seen_activation_regions=np.array(num_seen_activation_regions)
+        )
+        
+        print(f"✓ Results saved to '{output_path}'.")
 
 #_____________________________________________________________________________________________/ Main execution block
+
 def main():
-    """
-    Main function to load config and run the experiment.
-    """
+    """Main function to load config and run the experiment."""
     config_path = 'config.toml'
     if not os.path.exists(config_path):
         print(f"Error: Configuration file '{config_path}' not found.")
         return
         
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             config = toml.load(f)
         run_experiment(config)
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"\nAn error occurred: {e}")
 
 if __name__ == '__main__':
     main()
