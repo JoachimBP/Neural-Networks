@@ -45,6 +45,7 @@ def plot_experiment_results(results_folder=None):
     data = np.load(results_file)
     final_losses = data['final_losses']
     activation_regions = data['activation_regions']
+    seen_regions = data['seen_activation_regions']
 
     if len(final_losses) == 0:
         print("No data found to plot. 'final_losses' array is empty.")
@@ -53,23 +54,33 @@ def plot_experiment_results(results_folder=None):
     print(f"Loaded {len(final_losses)} data points.")
     print(f"Final Losses (min/max/avg): {np.min(final_losses):.4f} / {np.max(final_losses):.4f} / {np.mean(final_losses):.4f}")
     print(f"Activation Regions (min/max/avg): {np.min(activation_regions)} / {np.max(activation_regions)} / {np.mean(activation_regions):.2f}")
+    print(f"Seen Regions (min/max/avg): {np.min(seen_regions)} / {np.max(seen_regions)} / {np.mean(seen_regions):.2f}")
 
-    # Create the scatter plot
-    plt.figure(figsize=(10, 7))
-    plt.scatter(final_losses, activation_regions, alpha=0.7, edgecolors='w', s=100)
+    # Create the two scatter plots, one for the activation regions and one for the seen regions
 
-    plt.title('Final Validation Loss vs. Number of Activation Regions', fontsize=16)
-    plt.xlabel('Final Validation Loss (MSE)', fontsize=12)
-    plt.ylabel('Number of Activation Regions', fontsize=12)
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.axhline(y=1, color='gray', linestyle=':', linewidth=1, label='Min Regions (Linear)')
-    plt.legend()
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 7))
+    fig.suptitle('Final Validation Loss vs. Number of Regions', fontsize=20)
+    plt.subplots_adjust(wspace=0.3)
+    # Plot for Activation Regions
+    ax1.scatter(final_losses, activation_regions, alpha=0.7, edgecolors='w', s=100, color='tab:blue')
+    ax1.set_title('Activation Regions', fontsize=16)
+    ax1.set_xlabel('Final Validation Loss (MSE)', fontsize=12)
+    ax1.set_ylabel('Number of Activation Regions', fontsize=12)
+    ax1.grid(True, linestyle='--', alpha=0.6)
+    ax1.legend()
 
-    # Save the plot
-    plot_filename = os.path.join(results_folder, 'loss_vs_regions_scatter.png')
-    plt.savefig(plot_filename)
+    # Plot for Seen Regions
+    ax2.scatter(final_losses, seen_regions, alpha=0.7, edgecolors='w', s=100, color='tab:orange')
+    ax2.set_title('Seen Regions', fontsize=16)
+    ax2.set_xlabel('Final Validation Loss (MSE)', fontsize=12)
+    ax2.set_ylabel('Number of Seen Regions', fontsize=12)
+    ax2.grid(True, linestyle='--', alpha=0.6)
+    ax2.legend()
+    # Save the combined plot
+    combined_plot_filename = os.path.join(results_folder, 'loss_vs_regions_combined.png')
+    plt.savefig(combined_plot_filename)
     plt.close() # Close the plot to free memory
-    print(f"✓ Scatter plot saved to '{plot_filename}'.")
+    print(f"✓ Combined scatter plot saved to '{combined_plot_filename}'.")
 
 if __name__ == '__main__':
     # You can specify a results folder directly, e.g., plot_experiment_results('results/2023-10-27_10-30-00')
