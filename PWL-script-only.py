@@ -114,6 +114,7 @@ def run_experiment(config):
 
     # --- 4. Run Multiple Training Sessions ---
     final_losses = []
+    train_losses = []
     num_activation_regions = []
     num_seen_activation_regions = []
     num_runs = exp_cfg['num_runs']
@@ -128,7 +129,12 @@ def run_experiment(config):
         nnet = ReLU_network(layers=network_cfg['layers'], learning_rate=network_cfg['learning_rate'])
         
         history = nnet.train(x_train, y_train, x_val, y_val, epochs=network_cfg['epochs'])
-        
+                
+        # Record final training loss
+        train_loss = history.history['loss'][-1]
+        train_losses.append(train_loss)
+        print(f"  Final Training Loss: {train_loss:.6f}")
+
         # Record final validation loss
         final_loss = history.history['val_loss'][-1]
         final_losses.append(final_loss)
@@ -162,9 +168,10 @@ def run_experiment(config):
         results_file_path = os.path.join(output_path, 'results.npz')
         np.savez_compressed(
             results_file_path,
+            train_losses=np.array(train_losses),
             final_losses=np.array(final_losses),
-            activation_regions=np.array(num_activation_regions),
-            seen_activation_regions=np.array(num_seen_activation_regions)
+            seen_activation_regions=np.array(num_seen_activation_regions),
+            activation_regions=np.array(num_activation_regions)
         )
         
         print(f"✓ Results saved to '{output_path}'.")
