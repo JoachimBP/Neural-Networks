@@ -68,6 +68,67 @@ class ReLU_network:
         
         # Number of regions = number of changes + 1
         return np.sum(change_indices) + 1
+    
+
+    def get_Jacobian(self, X):
+        """
+        Computes the Jacobian of the network output with respect to the parameters for each input sample.
+
+        Args:
+            X (np.ndarray): Input data of shape (N_inputs, d_in).
+
+        Returns:
+            np.ndarray: An array containing the stacked Jacobians, with a final
+                        shape of (N_inputs * d_out, N_par).
+        """
+        # Ensure the input is a TensorFlow tensor for gradient computation
+        X_tensor = tf.convert_to_tensor(X, dtype=tf.float32)
+        N_inputs = X_tensor.shape[0]
+        
+        # Get the output dimension and total number of parameters from the model
+        d_out = self.nnet.output_shape[-1]
+        N_par = self.nnet.count_params()
+
+        with tf.GradientTape(persistent=True) as tape:
+            # Perform a forward pass. The tape will watch the model's trainable variables by default.
+            predictions = self.nnet(X_tensor)
+
+        # Compute the Jacobian of the model's output with respect to each trainable variable (weights and biases).
+        # This returns a list of tensors, one for each layer's parameters.
+        jacobians_list = tape.jacobian(predictions, self.nnet.trainable_variables)
+
+        # The tape is persistent, so it's good practice to delete it when done.
+        del tape
+
+        # Reshape and concatenate the list of Jacobian tensors into a single matrix.
+        # 1. Flatten the parameter dimensions for each tensor in the list.
+        #    The shape of jacobians_list[i] is (N_inputs, d_out, *param_shape_i),
+        #    which we reshape to (N_inputs, d_out, num_params_i).
+        flattened_jacobians = [tf.reshape(j, (N_inputs, d_out, -1)) for j in jacobians_list]
+
+        # 2. Concatenate the flattened Jacobians along the parameter axis (axis=2).
+        #    This creates a single tensor of shape (N_inputs, d_out, N_par).
+        full_jacobian = tf.concat(flattened_jacobians, axis=2)
+
+        # 3. Reshape to the final desired format: (N_inputs * d_out, N_par).
+        final_jacobian = tf.reshape(full_jacobian, (N_inputs * d_out, N_par))
+
+        return final_jacobian.numpy()
+    
+    def get_rank(self, X):
+        """
+        Computes the rank of the Jacobian matrix for the given input data.
+
+        Args:
+            X (np.ndarray): Input data of shape (N_inputs, d_in).
+
+        Returns:
+            int: The rank of the Jacobian matrix.
+        """
+        J = self.get_Jacobian(X)
+        rank = np.linalg.matrix_rank(J)
+        return rank
+
 
 #_____________________________________________________________________________________________/ Main Experiment Logic
 
@@ -115,6 +176,7 @@ def run_experiment(config):
     # --- 4. Run Multiple Training Sessions ---
     final_losses = []
     train_losses = []
+    jacobian_ranks = []
     num_activation_regions = []
     num_seen_activation_regions = []
     num_runs = exp_cfg['num_runs']
@@ -151,6 +213,11 @@ def run_experiment(config):
         num_seen_activation_regions.append(seen_regions)
         print(f"  Seen Activation Regions: {seen_regions}")
 
+        # Record rank of the Jacobian with training inputs
+        rank = nnet.get_rank(x_train)
+        jacobian_ranks.append(rank)
+        print(f"  Jacobian Rank: {rank}")
+
     print("\n✓ All training runs complete.")
 
     # --- 5. Save Results ---
@@ -171,7 +238,8 @@ def run_experiment(config):
             train_losses=np.array(train_losses),
             final_losses=np.array(final_losses),
             seen_activation_regions=np.array(num_seen_activation_regions),
-            activation_regions=np.array(num_activation_regions)
+            activation_regions=np.array(num_activation_regions),
+            jacobian_ranks=np.array(jacobian_ranks)
         )
         
         print(f"✓ Results saved to '{output_path}'.")

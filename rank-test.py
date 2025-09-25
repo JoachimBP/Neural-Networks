@@ -33,12 +33,12 @@ import matplotlib.pyplot as plt
 # from keras.layers import Dense, Activation
 # from keras.optimizers import SGD
 # import numpy as np
-from time import time
-from sklearn.model_selection import train_test_split
+# from time import time
+# from sklearn.model_selection import train_test_split
 
 # from keras.datasets import mnist
 
-from Fonctions.Fonctions import functional_dimension
+# from Fonctions.Fonctions import functional_dimension
 
 
 
@@ -66,6 +66,66 @@ class ReLU_network:
     def evaluate(self, X):
         """Predicts outputs for given inputs."""
         return self.nnet.predict(X, verbose=0)
+    
+
+    def get_Jacobian(self, X):
+        """
+        Computes the Jacobian of the network output with respect to the parameters for each input sample.
+
+        Args:
+            X (np.ndarray): Input data of shape (N_inputs, d_in).
+
+        Returns:
+            np.ndarray: An array containing the stacked Jacobians, with a final
+                        shape of (N_inputs * d_out, N_par).
+        """
+        # Ensure the input is a TensorFlow tensor for gradient computation
+        X_tensor = tf.convert_to_tensor(X, dtype=tf.float32)
+        N_inputs = X_tensor.shape[0]
+        
+        # Get the output dimension and total number of parameters from the model
+        d_out = self.nnet.output_shape[-1]
+        N_par = self.nnet.count_params()
+
+        with tf.GradientTape(persistent=True) as tape:
+            # Perform a forward pass. The tape will watch the model's trainable variables by default.
+            predictions = self.nnet(X_tensor)
+
+        # Compute the Jacobian of the model's output with respect to each trainable variable (weights and biases).
+        # This returns a list of tensors, one for each layer's parameters.
+        jacobians_list = tape.jacobian(predictions, self.nnet.trainable_variables)
+
+        # The tape is persistent, so it's good practice to delete it when done.
+        del tape
+
+        # Reshape and concatenate the list of Jacobian tensors into a single matrix.
+        # 1. Flatten the parameter dimensions for each tensor in the list.
+        #    The shape of jacobians_list[i] is (N_inputs, d_out, *param_shape_i),
+        #    which we reshape to (N_inputs, d_out, num_params_i).
+        flattened_jacobians = [tf.reshape(j, (N_inputs, d_out, -1)) for j in jacobians_list]
+
+        # 2. Concatenate the flattened Jacobians along the parameter axis (axis=2).
+        #    This creates a single tensor of shape (N_inputs, d_out, N_par).
+        full_jacobian = tf.concat(flattened_jacobians, axis=2)
+
+        # 3. Reshape to the final desired format: (N_inputs * d_out, N_par).
+        final_jacobian = tf.reshape(full_jacobian, (N_inputs * d_out, N_par))
+
+        return final_jacobian.numpy()
+    
+    def get_rank(self, X):
+        """
+        Computes the rank of the Jacobian matrix for the given input data.
+
+        Args:
+            X (np.ndarray): Input data of shape (N_inputs, d_in).
+
+        Returns:
+            int: The rank of the Jacobian matrix.
+        """
+        J = self.get_Jacobian(X)
+        rank = np.linalg.matrix_rank(J)
+        return rank
 
 #_____________________________________________________________________________________________/ Main Experiment Logic
 
@@ -101,6 +161,7 @@ def run_single_training_and_plot(config):
     y_data = interpolated_function(x_data) + np.random.normal(0, dataset_cfg['noise_std_dev'], size=dataset_cfg['num_samples'])
     
     x_train = x_data.reshape(-1, 1)
+    print("Shape of x_train:", x_train.shape)
     y_train = y_data.reshape(-1, 1)
     
     x_val = np.linspace(target_func_cfg['x_min'], target_func_cfg['x_max'], 100).reshape(-1, 1)
@@ -122,11 +183,8 @@ def run_single_training_and_plot(config):
     y_pred = nnet.evaluate(x_pred_space)
 
     # --- 6. Compute ranks for Plotting ---
-    fdim = functional_dimension(nnet)
-
-    ## X_train
-    fdim.get_differential(x_train)
-    rank = fdim.compute_rank()
+    rank = nnet.get_rank(x_train)
+    
     print(f"  Rank on training data: {rank}")
 
     # --- 7. Plotting Results ---
@@ -185,221 +243,3 @@ def main():
 if __name__ == '__main__':
     main()
 
-
-
-
-
-
-
-
-
-from keras.models import Sequential
-from keras.layers import Dense, Activation
-from keras.optimizers import SGD
-import numpy as np
-from time import time
-from sklearn.model_selection import train_test_split
-
-from keras.datasets import mnist
-
-from Fonctions.Fonctions import functional_dimension
-
-
-
-import sys
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
-
-
-# Download MNIST data
-(X_1, y_1), (X_2, y_2) = mnist.load_data()
-X_1 = X_1.reshape(60000, 784)
-X_2 = X_2.reshape(10000, 784)
-X_1 = X_1.astype('float32')
-X_2 = X_2.astype('float32')
-X_1 /= 255
-X_2 /= 255
-
-# Mix train and test data
-X = np.concatenate((X_1, X_2), axis =0)
-y = np.concatenate((y_1, y_2))
-
-# Choose the desired sizes for train and test
-train_size = 6000
-test_size = 20000
-
-# Randomly split train and test data
-X_train, X_test, y_train, y_test = train_test_split(X,y, train_size = train_size)
-X_test = X_test[0:test_size,:]
-y_test = y_test[0:test_size]
-
-# Randomly generate gaussian inputs
-random_size = test_size
-X_random = np.random.normal(random_size*784*[0.5],1).reshape(random_size, 784)
-
-
-
-
-    ##
-
-
-
-w_list = []
-
-train_spec = []
-test_spec = []
-random_spec = []
-
-accuracy = []
-val_accuracy = []
-loss = []
-val_loss = []
-computation_time = []
-epoch = []
-
-
-
-t0 = time()
-
-# Creation of the network
-w = 30   # Width of the network
-
-N0 = 784
-N1 = w
-N2 = w
-N3 = w
-NS = 10
-
-Arch = [N0, N1, N2, N3, NS]
-L = len(Arch) - 1
-
-model = Sequential()
-model.add(Dense(N1,  input_dim=N0))
-model.add(Activation('ReLU'))
-model.add(Dense(N2))
-model.add(Activation('ReLU'))
-model.add(Dense(N3))
-model.add(Activation('ReLU'))
-model.add(Dense(NS))
-model.add(Activation('softmax'))
-
-# Number of parameters and number of identifiable parameters (i.e. maximum theoretical functional dimension)
-Npar = model.count_params()
-Npar_identif = Npar - np.sum(Arch) + Arch[0] + Arch[L]
-
-# Parameters of the training
-from keras.optimizers import SGD
-learning_rate = 0.1
-sgd = SGD(learning_rate)
-model.compile(loss='categorical_crossentropy',optimizer=sgd,metrics=['accuracy'])
-
-# Convert class vectors to binary class matrices
-from keras.utils import np_utils
-Y_train = np_utils.to_categorical(y_train, 10)
-Y_test = np_utils.to_categorical(y_test, 10)
-
-batch_size = 256 
-
-# Epoch increment, i.e. number of SGD epochs between two computations
-# This number increases during training
-nb_epoch_1 = 40
-nb_epoch_2 = 200
-nb_epoch_3 = 400
-nb_iter_1 = 10
-nb_iter_2 = 5
-nb_iter_3 = 4
-nb_iter = nb_iter_1 + nb_iter_2 +  nb_iter_3
-total_epoch = nb_epoch_1 * nb_iter_1 + nb_epoch_2 * nb_iter_2 + nb_epoch_3 * nb_iter_3
-
-
-nb_epoch = nb_epoch_1   # Current epoch increment
-
-for cpt in range(nb_iter):
-    eprint('Iteration', cpt)
-
-    # After a certain number of iterations, change the epoch increment
-    if cpt == nb_iter_1:   
-        nb_epoch = nb_epoch_2
-    if cpt == nb_iter_1 + nb_iter_2:
-        nb_epoch = nb_epoch_3
-    t0 = time()
-
-    # Train the network
-    history = model.fit(X_train, Y_train, batch_size=batch_size, epochs=nb_epoch,verbose=0,validation_data = (X_test, Y_test))
-
-    acc = history.history['accuracy'][-1]
-    val_acc = history.history['val_accuracy'][-1]
-    loss = history.history['loss'][-1]
-    val_loss = history.history['val_loss'][-1]
-    
-    eprint('acc:', acc, '- val_acc:', val_acc, '- loss:', loss, '- val_loss:', val_loss)
-
-    # Store the current total number of epochs
-    if cpt <  nb_iter_1:
-        epoch.append((cpt + 1) * nb_epoch_1)
-    elif cpt < nb_iter_1 + nb_iter_2:
-        epoch.append(nb_iter_1 * nb_epoch_1 + (cpt + 1 - nb_iter_1) * nb_epoch_2)
-    else:
-        epoch.append(nb_iter_1 * nb_epoch_1 + nb_iter_2 * nb_epoch_2 + (cpt + 1 - nb_iter_1 - nb_iter_2) * nb_epoch_3)
-
-    # Store the accuracies and losses
-    accuracy.append(acc)
-    val_accuracy.append(val_acc)
-    loss.append(loss)
-    val_loss.append(val_loss)
-
-
-
-  
-    # Compute the batch functional dimension for the trained model and several input choices
-    fdim = functional_dimension(model)
-
-    ## X_train
-    fdim.get_differential(X_train)
-    spec = fdim.compute_svd()
-    train_spec.append(spec)
-
-    ## X_test
-    fdim.get_differential(X_test)
-    spec = fdim.compute_svd()
-    test_spec.append(spec)
-
-    ## X_random
-    fdim.get_differential(X_random)
-    spec = fdim.compute_svd()
-    random_spec.append(spec)
-
-    
-    ##
-
-    t1 = time()
-
-    comp_time = round((t1 - t0)/60, 2)
-
-    eprint('Computation time:', comp_time)
-    computation_time.append(comp_time)
-
-
-    ##
-
-
-# Store the lists of computed spectra in separate files for further analysis
-import pickle
-pickle.dump(train_spec, open('train_spec.dat', 'wb'))
-pickle.dump(test_spec, open('test_spec.dat', 'wb'))
-pickle.dump(random_spec, open('random_spec.dat', 'wb'))
-
-
-
-print('Batch size:', batch_size, ' - Total number of epochs:', total_epoch)
-print('Architecture =', Arch)
-print('Number of parameters:', Npar)
-print('Number of identifiable parameters:', Npar_identif)
-
-print('Train size:', train_size, '- Test_size:', test_size, '- Random size:', random_size)
-print('Epochs =', epoch)
-print('Final_train_loss =', loss)
-print('Final_test_loss =', val_loss)
-print('Final_train_accuracy =', accuracy)
-print('Final_test_accuracy =', val_accuracy)
-print('Computation_time =', computation_time)

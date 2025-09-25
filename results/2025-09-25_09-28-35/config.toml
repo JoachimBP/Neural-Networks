@@ -2,7 +2,7 @@
 
 [experiment]
 # Number of times to train a new network on the same dataset.
-num_runs = 50
+num_runs = 5
 
 [target_function]
 # Define the breakpoints of the piecewise-affine target function.

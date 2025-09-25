@@ -44,6 +44,7 @@ def plot_experiment_results(results_folder=None):
     # Load the data
     data = np.load(results_file)
     final_losses = data['final_losses']
+    train_losses = data['train_losses']
     activation_regions = data['activation_regions']
     seen_regions = data['seen_activation_regions']
 
@@ -56,31 +57,118 @@ def plot_experiment_results(results_folder=None):
     print(f"Activation Regions (min/max/avg): {np.min(activation_regions)} / {np.max(activation_regions)} / {np.mean(activation_regions):.2f}")
     print(f"Seen Regions (min/max/avg): {np.min(seen_regions)} / {np.max(seen_regions)} / {np.mean(seen_regions):.2f}")
 
-    # Create the two scatter plots, one for the activation regions and one for the seen regions
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 7))
-    fig.suptitle('Final Validation Loss vs. Number of Regions', fontsize=20)
+    # Create four scatter plots
+    fig, ((ax11, ax12), (ax21, ax22)) = plt.subplots(2, 2, figsize=(20, 15))
+    fig.suptitle('Final Loss vs. Number of Regions', fontsize=20)
     plt.subplots_adjust(wspace=0.3)
+    # Create two scatter plots for the validation losses
     # Plot for Activation Regions
-    ax1.scatter(final_losses, activation_regions, alpha=0.7, edgecolors='w', s=100, color='tab:blue')
-    ax1.set_title('Activation Regions', fontsize=16)
-    ax1.set_xlabel('Final Validation Loss (MSE)', fontsize=12)
-    ax1.set_ylabel('Number of Activation Regions', fontsize=12)
-    ax1.grid(True, linestyle='--', alpha=0.6)
-    ax1.legend()
+    ax11.scatter(final_losses, activation_regions, alpha=0.7, edgecolors='w', s=100, color='tab:blue')
+    ax11.set_title('Activation Regions', fontsize=16)
+    ax11.set_xlabel('Final Validation Loss (MSE)', fontsize=12)
+    ax11.set_ylabel('Number of Activation Regions', fontsize=12)
+    ax11.grid(True, linestyle='--', alpha=0.6)
+    ax11.legend()
 
     # Plot for Seen Regions
-    ax2.scatter(final_losses, seen_regions, alpha=0.7, edgecolors='w', s=100, color='tab:orange')
-    ax2.set_title('Seen Regions', fontsize=16)
-    ax2.set_xlabel('Final Validation Loss (MSE)', fontsize=12)
-    ax2.set_ylabel('Number of Seen Regions', fontsize=12)
-    ax2.grid(True, linestyle='--', alpha=0.6)
-    ax2.legend()
+    ax12.scatter(final_losses, seen_regions, alpha=0.7, edgecolors='w', s=100, color='tab:orange')
+    ax12.set_title('Seen Regions', fontsize=16)
+    ax12.set_xlabel('Final Validation Loss (MSE)', fontsize=12)
+    ax12.set_ylabel('Number of Seen Regions', fontsize=12)
+    ax12.grid(True, linestyle='--', alpha=0.6)
+    ax12.legend()
+
+
+    # Create two scatter plots for the training losses
+    # Plot for Activation Regions
+    ax21.scatter(train_losses, activation_regions, alpha=0.7, edgecolors='w', s=100, color='tab:blue')
+    ax21.set_title('Activation Regions', fontsize=16)
+    ax21.set_xlabel('Final Training Loss (MSE)', fontsize=12)
+    ax21.set_ylabel('Number of Activation Regions', fontsize=12)
+    ax21.grid(True, linestyle='--', alpha=0.6)
+    ax21.legend()
+
+    # Plot for Seen Regions
+    ax22.scatter(train_losses, seen_regions, alpha=0.7, edgecolors='w', s=100, color='tab:orange')
+    ax22.set_title('Seen Regions', fontsize=16)
+    ax22.set_xlabel('Final Training Loss (MSE)', fontsize=12)
+    ax22.set_ylabel('Number of Seen Regions', fontsize=12)
+    ax22.grid(True, linestyle='--', alpha=0.6)
+    ax22.legend()
+
     # Save the combined plot
-    combined_plot_filename = os.path.join(results_folder, 'loss_vs_regions_combined.png')
+    combined_plot_filename = os.path.join(results_folder, 'loss_vs_regions.png')
     plt.savefig(combined_plot_filename)
     plt.close() # Close the plot to free memory
-    print(f"✓ Combined scatter plot saved to '{combined_plot_filename}'.")
+    print(f"✓ Scatter plot saved to '{combined_plot_filename}'.")
+
+
+
+    # Create a scatter plot for the Jacobian ranks if available
+    if 'jacobian_ranks' in data:
+        jacobian_ranks = data['jacobian_ranks']
+        if len(jacobian_ranks) == len(final_losses):
+            fig, (ax1, ax2) = plt.subplots(2,1, figsize=(12, 16))
+            # Scatter plot for Final Validation Loss vs. Jacobian Rank
+            ax1.scatter(final_losses, jacobian_ranks, alpha=0.7, edgecolors='w', s=100, color='tab:green')
+            ax1.set_title('Final Validation Loss vs. Jacobian Rank', fontsize=16)
+            ax1.set_xlabel('Final Validation Loss (MSE)', fontsize=12)
+            ax1.set_ylabel('Jacobian Rank', fontsize=12)
+            ax1.grid(True, linestyle='--', alpha=0.6)
+            ax1.legend()
+            # Scatter plot for Final Training Loss vs. Jacobian Rank
+            ax2.scatter(train_losses, jacobian_ranks, alpha=0.7, edgecolors='w', s=100, color='tab:green')
+            ax2.set_title('Final Training Loss vs. Jacobian Rank', fontsize=16)
+            ax2.set_xlabel('Final Training Loss (MSE)', fontsize=12)
+            ax2.set_ylabel('Jacobian Rank', fontsize=12)
+            ax2.grid(True, linestyle='--', alpha=0.6)
+            ax2.legend()
+            # Save the combined plot
+            combined_rank_plot_filename = os.path.join(results_folder, 'loss_vs_jacobian_rank.png')
+            plt.savefig(combined_rank_plot_filename)
+            plt.close() # Close the plot to free memory
+            print(f"✓ Jacobian rank plots saved to '{combined_rank_plot_filename}'.")
+        else:
+            print("Warning: 'jacobian_ranks' length does not match 'final_losses'. Skipping Jacobian rank plot.")
+    else:
+        print("No 'jacobian_ranks' data found. Skipping Jacobian rank plot.")
+
+
+    # Scatter plot for Jacobian rank vs. number of activation regions if available
+    if 'jacobian_ranks' in data:
+        jacobian_ranks = data['jacobian_ranks']
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 7))
+        # Activation regions
+        if len(jacobian_ranks) == len(activation_regions):
+            ax1.scatter(activation_regions, jacobian_ranks, alpha=0.7, edgecolors='w', s=100, color='tab:purple')
+            ax1.set_title('Jacobian Rank vs. Number of Activation Regions', fontsize=16)
+            ax1.set_xlabel('Number of Activation Regions', fontsize=12)
+            ax1.set_ylabel('Jacobian Rank', fontsize=12)
+            ax1.grid(True, linestyle='--', alpha=0.6)
+            ax1.legend()
+        else:
+            print("Warning: 'jacobian_ranks' length does not match 'activation_regions'. Skipping Jacobian rank vs. activation regions plot.")
+        # Seen regions
+        if len(jacobian_ranks) == len(seen_regions):
+            ax2.scatter(seen_regions, jacobian_ranks, alpha=0.7, edgecolors='w', s=100, color='tab:cyan')
+            ax2.set_title('Jacobian Rank vs. Number of Seen Regions', fontsize=16)
+            ax2.set_xlabel('Number of Seen Regions', fontsize=12)
+            ax2.set_ylabel('Jacobian Rank', fontsize=12)
+            ax2.grid(True, linestyle='--', alpha=0.6)
+            ax2.legend()
+        else:
+            print("Warning: 'jacobian_ranks' length does not match 'seen_regions'. Skipping Jacobian rank vs. seen regions plot.")
+        # Save the combined plot if both subplots were created
+        if (len(jacobian_ranks) == len(activation_regions)) and (len(jacobian_ranks) == len(seen_regions)):
+            combined_plot_filename = os.path.join(results_folder, 'jacobian_rank_vs_regions.png')
+            plt.suptitle('Jacobian Rank vs. Number of Regions', fontsize=20)
+            plt.subplots_adjust(wspace=0.3)
+            plt.savefig(combined_plot_filename)
+            plt.close() # Close the plot to free memory
+            print(f"✓ Jacobian rank vs. regions plot saved to '{combined_plot_filename}'.")
+    else:
+        print("No 'jacobian_ranks' data found. Skipping Jacobian rank vs. activation regions plot.")
+
 
 if __name__ == '__main__':
     # You can specify a results folder directly, e.g., plot_experiment_results('results/2023-10-27_10-30-00')
