@@ -37,4 +37,4 @@ save_experiment = true
 results_base_dir = "results"
 name = "scheduler"
 # To plot a failure case
-loss_threshold = 0.5
+loss_threshold = 0.0

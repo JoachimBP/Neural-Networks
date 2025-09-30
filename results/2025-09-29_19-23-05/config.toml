@@ -20,21 +20,10 @@ noise_std_dev = 0
 # Neural network architecture and training parameters.
 layers = [1, 100, 1]
 epochs = 1500
-learning_rate = 0.1
-optimizer = "adam"
-momentum = 0.0   # Must be a float
+learning_rate = 0.01
 batch_size = 8
-verbose = 0
-
-[learning_rate_scheduler]
-enabled = true
-decay_steps = 100
-decay_rate = 0.95
 
 [output]
 # Settings for saving experiment results.
 save_experiment = true
 results_base_dir = "results"
-name = "scheduler"
-# To plot a failure case
-loss_threshold = 0.5

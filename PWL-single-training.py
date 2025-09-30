@@ -1,7 +1,6 @@
 # ========================================================================================== #
 #                                                                                            #
 #                         <<< Single Neural Network Training & Plot >>>                      #
-#                                   (Configuration-based)                                    #
 #                                                                                            #
 # ========================================================================================== #
 #                                                                                            #
@@ -19,12 +18,32 @@ from scipy.interpolate import interp1d
 import tensorflow as tf
 from keras import Sequential, Input
 from keras.layers import Dense
-from keras.optimizers import Adam
+from keras.optimizers import Adam, SGD
+from keras.optimizers.schedules import ExponentialDecay
 import toml
 import os
 import shutil
 from datetime import datetime
 import matplotlib.pyplot as plt
+
+#_____________________________________________________________________________________________/ Custom Callback
+
+class EarlyStopOnLossThreshold(tf.keras.callbacks.Callback):
+    """
+    A Keras callback to stop training if the validation loss falls below a certain threshold.
+    """
+    def __init__(self, threshold):
+        super(EarlyStopOnLossThreshold, self).__init__()
+        self.threshold = threshold
+        self.stopped_early = False # Flag to indicate if training was stopped by this callback
+
+    def on_epoch_end(self, epoch, logs=None):
+        current_loss = logs.get('val_loss')
+        if current_loss is not None and current_loss < self.threshold:
+            print(f"\nEpoch {epoch+1}: Validation loss ({current_loss:.6f}) is below threshold ({self.threshold}). Stopping and retrying.")
+            self.model.stop_training = True
+            self.stopped_early = True
+
 
 #_____________________________________________________________________________________________/ Neural Network Class
 
@@ -32,20 +51,41 @@ class ReLU_network:
     """
     A class to define, train, and evaluate a ReLU neural network.
     """
-    def __init__(self, layers, learning_rate=0.01):
+    def __init__(self, network_cfg, scheduler_cfg=None):
         """Initializes a neural network with a given architecture and learning rate."""
+        layers = network_cfg['layers']
+        learning_rate = network_cfg['learning_rate']
+        optimizer_name = network_cfg.get('optimizer', 'adam')
+
         self.nnet = Sequential()
         self.nnet.add(Input(shape=(layers[0],)))
         for size in layers[1:-1]:
             self.nnet.add(Dense(size, activation='relu'))
         self.nnet.add(Dense(layers[-1], activation='linear'))
         
-        optimizer = Adam(learning_rate=learning_rate)
+        # Set up the learning rate (either a fixed value or a scheduler)
+        lr_schedule = learning_rate
+        if scheduler_cfg and scheduler_cfg.get('enabled', False):
+            print("  Learning rate scheduler is ENABLED.")
+            lr_schedule = ExponentialDecay(
+                initial_learning_rate=learning_rate,
+                decay_steps=scheduler_cfg.get('decay_steps', 1000),
+                decay_rate=scheduler_cfg.get('decay_rate', 0.9)
+            )
+        
+        optimizer_name = optimizer_name.lower()
+        if optimizer_name == 'adam':
+            optimizer = Adam(learning_rate=lr_schedule)
+        elif optimizer_name == 'sgd':
+            momentum = network_cfg.get('momentum', 0.0) # Default to 0 if not specified
+            optimizer = SGD(learning_rate=lr_schedule, momentum=momentum)
+        else:
+            raise ValueError(f"Unsupported optimizer: '{optimizer_name}'. Please use 'adam' or 'sgd'.")
         self.nnet.compile(optimizer=optimizer, loss='mse')
 
-    def train(self, X_train, Y_train, X_val, Y_val, epochs):
+    def train(self, X_train, Y_train, X_val, Y_val, epochs, callbacks=None):
         """Trains the neural network."""
-        return self.nnet.fit(X_train, Y_train, epochs=epochs, batch_size=32, validation_data=(X_val, Y_val), verbose=1)
+        return self.nnet.fit(X_train, Y_train, epochs=epochs, batch_size=32, validation_data=(X_val, Y_val), verbose=1, callbacks=callbacks)
 
     def evaluate(self, X):
         """Predicts outputs for given inputs."""
@@ -61,6 +101,7 @@ def run_single_training_and_plot(config):
     target_func_cfg = config['target_function']
     dataset_cfg = config['dataset']
     network_cfg = config['network']
+    scheduler_cfg = config.get('learning_rate_scheduler') # Can be None
     output_cfg = config['output']
     print("✓ Configuration loaded.")
 
@@ -92,14 +133,31 @@ def run_single_training_and_plot(config):
     
     print(f"✓ Dataset generated with {dataset_cfg['num_samples']} samples.")
 
-    # --- 4. Initialize and Train the Neural Network ---
-    print(f"\n▶ Training network for {network_cfg['epochs']} epochs...")
-    nnet = ReLU_network(layers=network_cfg['layers'], learning_rate=network_cfg['learning_rate'])
-    history = nnet.train(x_train, y_train, x_val, y_val, epochs=network_cfg['epochs'])
-    print("✓ Training complete.")
-    
-    final_loss = history.history['val_loss'][-1]
-    print(f"  Final Validation Loss: {final_loss:.6f}")
+   # --- 4. Initialize and Train the Neural Network ---
+    loss_threshold = output_cfg.get('loss_threshold', 0.0)
+    run_count = 0
+
+    while True:
+        run_count += 1
+        print(f"\n▶ Training Run #{run_count} (target loss >= {loss_threshold})...")
+        
+        # Initialize a new network and the custom callback for each attempt
+        nnet = ReLU_network(network_cfg, scheduler_cfg=scheduler_cfg)
+        stop_callback = EarlyStopOnLossThreshold(threshold=loss_threshold)
+        
+        history = nnet.train(x_train, y_train, x_val, y_val, epochs=network_cfg['epochs'], callbacks=[stop_callback])
+        
+        # If training was stopped early, the loss was too low. Continue to the next run.
+        if stop_callback.stopped_early:
+            continue
+
+        # If we reach here, training completed all epochs without the loss dropping below the threshold.
+        # This is the scenario we want to capture.
+        final_loss = history.history['val_loss'][-1]
+        print(f"  Final Validation Loss: {final_loss:.6f}")
+        print(f"✓ Training complete. Found a model with final loss above the threshold.")
+        break
+
 
     # --- 5. Generate Predictions for Plotting ---
     x_pred_space = np.linspace(target_func_cfg['x_min'], target_func_cfg['x_max'], 1000).reshape(-1, 1)
@@ -137,8 +195,12 @@ def run_single_training_and_plot(config):
         
         plot_filename = os.path.join(output_path, 'prediction_vs_target.png')
         plt.savefig(plot_filename)
-        
         print(f"\n✓ Plot saved to '{plot_filename}'.")
+        
+        # Save model weights and biases
+        weights_filename = os.path.join(output_path, 'model.weights.h5')
+        nnet.nnet.save_weights(weights_filename)
+        print(f"✓ Model weights saved to '{weights_filename}'.")
     
     plt.close()
 

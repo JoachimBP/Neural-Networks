@@ -19,7 +19,8 @@ from scipy.interpolate import interp1d
 import tensorflow as tf
 from keras import Sequential, Input
 from keras.layers import Dense
-from keras.optimizers import Adam
+from keras.optimizers import Adam, SGD
+from keras.optimizers.schedules import ExponentialDecay
 import toml
 import os
 import shutil
@@ -31,20 +32,41 @@ class ReLU_network:
     """
     A class to define, train, and evaluate a ReLU neural network.
     """
-    def __init__(self, layers, learning_rate=0.01):
+    def __init__(self, network_cfg, scheduler_cfg=None):
         """Initializes a neural network with a given architecture and learning rate."""
+        layers = network_cfg['layers']
+        learning_rate = network_cfg['learning_rate']
+        optimizer_name = network_cfg.get('optimizer', 'adam')
+
         self.nnet = Sequential()
         self.nnet.add(Input(shape=(layers[0],)))
         for size in layers[1:-1]:
             self.nnet.add(Dense(size, activation='relu'))
         self.nnet.add(Dense(layers[-1], activation='linear'))
         
-        optimizer = Adam(learning_rate=learning_rate)
+        # Set up the learning rate (either a fixed value or a scheduler)
+        lr_schedule = learning_rate
+        if scheduler_cfg and scheduler_cfg.get('enabled', False):
+            print("  Learning rate scheduler is ENABLED.")
+            lr_schedule = ExponentialDecay(
+                initial_learning_rate=learning_rate,
+                decay_steps=scheduler_cfg.get('decay_steps', 1000),
+                decay_rate=scheduler_cfg.get('decay_rate', 0.9)
+            )
+        
+        optimizer_name = optimizer_name.lower()
+        if optimizer_name == 'adam':
+            optimizer = Adam(learning_rate=lr_schedule)
+        elif optimizer_name == 'sgd':
+            momentum = network_cfg.get('momentum', 0.0) # Default to 0 if not specified
+            optimizer = SGD(learning_rate=lr_schedule, momentum=momentum)
+        else:
+            raise ValueError(f"Unsupported optimizer: '{optimizer_name}'. Please use 'adam' or 'sgd'.")
         self.nnet.compile(optimizer=optimizer, loss='mse')
 
-    def train(self, X_train, Y_train, X_val, Y_val, epochs):
+    def train(self, X_train, Y_train, X_val, Y_val, epochs, batch_size=32, verbose=1):
         """Trains the neural network."""
-        return self.nnet.fit(X_train, Y_train, epochs=epochs, batch_size=32, validation_data=(X_val, Y_val), verbose=0)
+        return self.nnet.fit(X_train, Y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_val, Y_val), verbose=verbose)
 
     def get_activation_region_count(self, x_space):
         """Finds the number of distinct linear regions over the input space."""
@@ -141,6 +163,7 @@ def run_experiment(config):
     target_func_cfg = config['target_function']
     dataset_cfg = config['dataset']
     network_cfg = config['network']
+    scheduler_cfg = config.get('learning_rate_scheduler') # Can be None
     output_cfg = config['output']
     print("✓ Configuration loaded.")
 
@@ -188,9 +211,9 @@ def run_experiment(config):
         print(f"\n--- Running training {i + 1}/{num_runs} ---")
         
         # Initialize a new network for each run to get new random weights
-        nnet = ReLU_network(layers=network_cfg['layers'], learning_rate=network_cfg['learning_rate'])
+        nnet = ReLU_network(network_cfg, scheduler_cfg=scheduler_cfg)
         
-        history = nnet.train(x_train, y_train, x_val, y_val, epochs=network_cfg['epochs'])
+        history = nnet.train(x_train, y_train, x_val, y_val, epochs=network_cfg['epochs'], verbose=network_cfg.get('verbose', 1))
                 
         # Record final training loss
         train_loss = history.history['loss'][-1]
@@ -224,7 +247,7 @@ def run_experiment(config):
     if output_cfg.get('save_experiment', False):
         now = datetime.now()
         date_time_str = now.strftime("%Y-%m-%d_%H-%M-%S")
-        output_path = os.path.join(output_cfg['results_base_dir'], date_time_str)
+        output_path = os.path.join(output_cfg['results_base_dir'], date_time_str + "_" + output_cfg.get('name', 'experiment'))
         
         os.makedirs(output_path, exist_ok=True)
         
