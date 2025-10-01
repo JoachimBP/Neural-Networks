@@ -55,13 +55,23 @@ class ReLU_network:
         """Initializes a neural network with a given architecture and learning rate."""
         layers = network_cfg['layers']
         learning_rate = network_cfg['learning_rate']
-        optimizer_name = network_cfg.get('optimizer', 'adam')
+
+        # --- Bias Initializer Setup ---
+        bias_mean = network_cfg.get('bias_initializer_mean', 0.0)
+        bias_stddev = network_cfg.get('bias_initializer_stddev', 0.0)
+
+        if bias_stddev > 0:
+            print(f"  Using RandomNormal bias initializer (mean={bias_mean}, stddev={bias_stddev}).")
+            bias_initializer = tf.keras.initializers.RandomNormal(mean=bias_mean, stddev=bias_stddev)
+        else:
+            print("  Using default 'zeros' bias initializer.")
+            bias_initializer = 'zeros'
 
         self.nnet = Sequential()
         self.nnet.add(Input(shape=(layers[0],)))
         for size in layers[1:-1]:
-            self.nnet.add(Dense(size, activation='relu'))
-        self.nnet.add(Dense(layers[-1], activation='linear'))
+            self.nnet.add(Dense(size, activation='relu', bias_initializer=bias_initializer))
+        self.nnet.add(Dense(layers[-1], activation='linear', bias_initializer=bias_initializer))
         
         # Set up the learning rate (either a fixed value or a scheduler)
         lr_schedule = learning_rate
@@ -73,7 +83,7 @@ class ReLU_network:
                 decay_rate=scheduler_cfg.get('decay_rate', 0.9)
             )
         
-        optimizer_name = optimizer_name.lower()
+        optimizer_name = network_cfg.get('optimizer', 'adam').lower()
         if optimizer_name == 'adam':
             optimizer = Adam(learning_rate=lr_schedule)
         elif optimizer_name == 'sgd':
@@ -83,9 +93,10 @@ class ReLU_network:
             raise ValueError(f"Unsupported optimizer: '{optimizer_name}'. Please use 'adam' or 'sgd'.")
         self.nnet.compile(optimizer=optimizer, loss='mse')
 
-    def train(self, X_train, Y_train, X_val, Y_val, epochs, callbacks=None):
+    def train(self, X_train, Y_train, X_val, Y_val, epochs, batch_size=32, callbacks=None, verbose=1):
         """Trains the neural network."""
-        return self.nnet.fit(X_train, Y_train, epochs=epochs, batch_size=32, validation_data=(X_val, Y_val), verbose=1, callbacks=callbacks)
+        return self.nnet.fit(X_train, Y_train, epochs=epochs, batch_size=batch_size, 
+                           validation_data=(X_val, Y_val), verbose=1, callbacks=callbacks)
 
     def evaluate(self, X):
         """Predicts outputs for given inputs."""
@@ -145,7 +156,10 @@ def run_single_training_and_plot(config):
         nnet = ReLU_network(network_cfg, scheduler_cfg=scheduler_cfg)
         stop_callback = EarlyStopOnLossThreshold(threshold=loss_threshold)
         
-        history = nnet.train(x_train, y_train, x_val, y_val, epochs=network_cfg['epochs'], callbacks=[stop_callback])
+        history = nnet.train(x_train, y_train, x_val, y_val, 
+                               epochs=network_cfg['epochs'], 
+                               batch_size=network_cfg.get('batch_size', 32),
+                               callbacks=[stop_callback])
         
         # If training was stopped early, the loss was too low. Continue to the next run.
         if stop_callback.stopped_early:
