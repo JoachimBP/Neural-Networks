@@ -251,8 +251,10 @@ def run_experiment(config):
         
         os.makedirs(output_path, exist_ok=True)
         
-        # Save a copy of the config file for reproducibility
-        shutil.copy('config.toml', os.path.join(output_path, 'config.toml'))
+        # Save the configuration used for this run by writing the in-memory 'config' object
+        config_save_path = os.path.join(output_path, 'config.toml')
+        with open(config_save_path, 'w', encoding='utf-8') as f:
+            toml.dump(config, f)
         
         # Save the results arrays to a compressed NumPy file
         results_file_path = os.path.join(output_path, 'results.npz')

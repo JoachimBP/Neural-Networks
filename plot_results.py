@@ -169,6 +169,76 @@ def plot_experiment_results(results_folder=None):
     else:
         print("No 'jacobian_ranks' data found. Skipping Jacobian rank vs. activation regions plot.")
 
+    # Plot the heatmap of the Jacobian rank and the training loss
+    import plotly.express as px
+    import pandas as pd
+    # Create a dataframe with the Jacobian ranks and training losses
+    if 'jacobian_ranks' in data:
+        jacobian_ranks = data['jacobian_ranks']
+        if len(jacobian_ranks) == len(train_losses):
+            df = pd.DataFrame({
+                'Jacobian Rank': jacobian_ranks,
+                'Training Loss': train_losses
+            })
+            fig = px.density_heatmap(df, x="Training Loss", y="Jacobian Rank", marginal_x="histogram", marginal_y="histogram",
+                                     title='Density Heatmap of Jacobian Rank vs. Training Loss')
+            heatmap_filename = os.path.join(results_folder, 'jacobian_rank_vs_training_loss_heatmap.html')
+            fig.write_html(heatmap_filename)
+            print(f"✓ Jacobian rank vs. training loss heatmap saved to '{heatmap_filename}'.")
+
+            # ================================================================= #
+            #                3D HISTOGRAM CODE     #
+            # ================================================================= #
+            
+            # Create a 3D histogram
+            fig = plt.figure(figsize=(12, 9))
+            ax = fig.add_subplot(projection='3d')
+            x, y = df['Training Loss'], df['Jacobian Rank']
+            
+            # Construct 2D histogram
+            bins = 6
+            hist, xedges, yedges = np.histogram2d(x, y, bins=bins)
+
+            # Construct arrays for the anchor positions of the bars.
+            xpos, ypos = np.meshgrid(xedges[:-1], yedges[:-1], indexing="ij")
+            xpos = xpos.ravel()
+            ypos = ypos.ravel()
+            zpos = 0
+
+            # Construct arrays with the dimensions for the bars.
+            dx = (xedges[1] - xedges[0]) * 0.9
+            dy = (yedges[1] - yedges[0]) * 0.9
+            dz = hist.ravel()
+
+            # Add a colormap
+            cmap = plt.get_cmap('viridis')
+            # Normalize heights to range [0, 1] for the colormap
+            max_height = np.max(dz)
+            # Avoid division by zero if all bins are empty
+            norm = plt.Normalize(0, max_height) if max_height > 0 else plt.Normalize(0, 1)
+            colors = cmap(norm(dz))
+
+            # Make empty bins transparent by setting their alpha channel to 0
+            empty_bins_mask = dz == 0
+            colors[empty_bins_mask, 3] = 0
+
+            ax.bar3d(xpos, ypos, zpos, dx, dy, dz, zsort='average', color=colors)
+
+            ax.set_title('3D Histogram of Jacobian Rank vs. Training Loss', fontsize=16)
+            ax.set_xlabel('Training Loss', fontsize=12)
+            ax.set_ylabel('Jacobian Rank', fontsize=12)
+            ax.set_zlabel('Frequency', fontsize=12)
+
+            hist3d_filename = os.path.join(results_folder, 'jacobian_rank_vs_training_loss_3d_hist.png')
+            plt.savefig(hist3d_filename)
+            plt.close(fig)
+            print(f"✓ 3D histogram saved to '{hist3d_filename}'.")
+
+        else:
+            print("Warning: 'jacobian_ranks' length does not match 'train_losses'. Skipping heatmap plot.")
+    else:
+        print("No 'jacobian_ranks' data found. Skipping heatmap plot.")
+
 
 if __name__ == '__main__':
     # You can specify a results folder directly, e.g., plot_experiment_results('results/2023-10-27_10-30-00')
