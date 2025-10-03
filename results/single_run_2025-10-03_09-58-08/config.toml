@@ -1,0 +1,43 @@
+# Configuration file for the neural network training experiment
+
+[experiment]
+# Number of times to train a new network on the same dataset.
+num_runs = 50
+
+[target_function]
+# Define the breakpoints of the piecewise-affine target function.
+x_coords = [4, 6, 10, 16]
+y_coords = [10, 12, 10, 16]
+x_min = 0
+x_max = 20
+
+[dataset]
+# Parameters for generating the training dataset.
+num_samples = 50
+noise_std_dev = 0
+
+[network]
+# Neural network architecture and training parameters.
+layers = [1, 100, 1]
+epochs = 500
+learning_rate = 0.001
+optimizer = "sgd"
+momentum = 0.9   # Must be a float
+batch_size = 8
+bias_initializer_mean = 0.0
+bias_initializer_stddev = 3.0
+verbose = 0
+
+[learning_rate_scheduler]
+enabled = true
+decay_steps = 40
+decay_rate = 0.95
+constant_step = 200
+
+[output]
+# Settings for saving experiment results.
+save_experiment = true
+results_base_dir = "results"
+name = "sgd-150-examples-batch64"
+# To plot a failure case
+loss_threshold = 0

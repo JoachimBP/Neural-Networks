@@ -38,20 +38,49 @@ class ReLU_network:
         learning_rate = network_cfg['learning_rate']
         optimizer_name = network_cfg.get('optimizer', 'adam')
 
+        # --- Bias Initializer Setup ---
+        bias_mean = network_cfg.get('bias_initializer_mean', 0.0)
+        bias_stddev = network_cfg.get('bias_initializer_stddev', 0.0)
+
+        if bias_stddev > 0:
+            bias_initializer = tf.keras.initializers.RandomNormal(mean=bias_mean, stddev=bias_stddev)
+        else:
+            bias_initializer = 'zeros'
+
         self.nnet = Sequential()
         self.nnet.add(Input(shape=(layers[0],)))
         for size in layers[1:-1]:
-            self.nnet.add(Dense(size, activation='relu'))
-        self.nnet.add(Dense(layers[-1], activation='linear'))
+            self.nnet.add(Dense(size, activation='relu', bias_initializer=bias_initializer))
+        self.nnet.add(Dense(layers[-1], activation='linear', bias_initializer=bias_initializer))
         
         # Set up the learning rate (either a fixed value or a scheduler)
         lr_schedule = learning_rate
         if scheduler_cfg and scheduler_cfg.get('enabled', False):
             print("  Learning rate scheduler is ENABLED.")
-            lr_schedule = ExponentialDecay(
+
+            # Implement piecewise decay (copied from PWL-single-training.py)
+            class PiecewiseDecay(tf.keras.optimizers.schedules.LearningRateSchedule):
+                def __init__(self, initial_learning_rate, decay_steps, decay_rate, constant_step):
+                    self.initial_learning_rate = initial_learning_rate
+                    self.decay_steps = decay_steps
+                    self.decay_rate = decay_rate
+                    self.constant_step = constant_step
+
+                def __call__(self, step):
+                    step = tf.cast(step, tf.float32)
+                    lr_before = self.initial_learning_rate * (self.decay_rate ** (step / self.decay_steps))
+                    lr_after = self.initial_learning_rate * (self.decay_rate ** (self.constant_step / self.decay_steps))
+                    return tf.cond(
+                        step < self.constant_step,
+                        lambda: lr_before,
+                        lambda: lr_after
+                    )
+
+            lr_schedule = PiecewiseDecay(
                 initial_learning_rate=learning_rate,
                 decay_steps=scheduler_cfg.get('decay_steps', 1000),
-                decay_rate=scheduler_cfg.get('decay_rate', 0.9)
+                decay_rate=scheduler_cfg.get('decay_rate', 0.9),
+                constant_step=scheduler_cfg.get('constant_step', 2000)
             )
         
         optimizer_name = optimizer_name.lower()

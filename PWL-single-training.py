@@ -70,25 +70,44 @@ class ReLU_network:
         self.nnet = Sequential()
         self.nnet.add(Input(shape=(layers[0],)))
         for size in layers[1:-1]:
-            self.nnet.add(Dense(size, activation='relu', bias_initializer=bias_initializer))
-        self.nnet.add(Dense(layers[-1], activation='linear', bias_initializer=bias_initializer))
+            self.nnet.add(Dense(size, activation='relu', kernel_initializer='he_normal'))
+        self.nnet.add(Dense(layers[-1], activation='linear', kernel_initializer='he_normal'))
         
         # Set up the learning rate (either a fixed value or a scheduler)
+        self.initial_learning_rate = learning_rate
         lr_schedule = learning_rate
         if scheduler_cfg and scheduler_cfg.get('enabled', False):
             print("  Learning rate scheduler is ENABLED.")
-            lr_schedule = ExponentialDecay(
-                initial_learning_rate=learning_rate,
-                decay_steps=scheduler_cfg.get('decay_steps', 1000),
-                decay_rate=scheduler_cfg.get('decay_rate', 0.9)
-            )
+
+            #Implement piecewise decay
+            class PiecewiseDecay(tf.keras.optimizers.schedules.LearningRateSchedule):
+                def __init__(self, initial_learning_rate, decay_steps, decay_rate, constant_step):
+                    self.initial_learning_rate = initial_learning_rate
+                    self.decay_steps = decay_steps
+                    self.decay_rate = decay_rate
+                    self.constant_step = constant_step
+
+                def __call__(self, step):
+                    step = tf.cast(step, tf.float32)
+                    lr_before = self.initial_learning_rate * (self.decay_rate ** (step / self.decay_steps))
+                    lr_after = self.initial_learning_rate * (self.decay_rate ** (self.constant_step / self.decay_steps))
+                    return tf.cond(
+                        step < self.constant_step,
+                        lambda: lr_before,
+                        lambda: lr_after
+                    )
+
+            lr_schedule = PiecewiseDecay(initial_learning_rate=learning_rate,
+                                         decay_steps=scheduler_cfg.get('decay_steps', 1000),
+                                         decay_rate=scheduler_cfg.get('decay_rate', 0.9),
+                                         constant_step=scheduler_cfg.get('constant_step', 2000))
         
         optimizer_name = network_cfg.get('optimizer', 'adam').lower()
         if optimizer_name == 'adam':
             optimizer = Adam(learning_rate=lr_schedule)
         elif optimizer_name == 'sgd':
             momentum = network_cfg.get('momentum', 0.0) # Default to 0 if not specified
-            optimizer = SGD(learning_rate=lr_schedule, momentum=momentum)
+            optimizer = SGD(learning_rate=lr_schedule, momentum=momentum, nesterov=(momentum > 0))
         else:
             raise ValueError(f"Unsupported optimizer: '{optimizer_name}'. Please use 'adam' or 'sgd'.")
         self.nnet.compile(optimizer=optimizer, loss='mse')
@@ -138,6 +157,8 @@ def run_single_training_and_plot(config):
     
     x_train = x_data.reshape(-1, 1)
     y_train = y_data.reshape(-1, 1)
+    print('X_train=', x_train)
+    print('Y_train=', y_train)
     
     x_val = np.linspace(target_func_cfg['x_min'], target_func_cfg['x_max'], 100).reshape(-1, 1)
     y_val = interpolated_function(x_val).reshape(-1, 1)
